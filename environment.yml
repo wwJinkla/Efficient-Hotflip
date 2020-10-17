@@ -5,3 +5,4 @@ dependencies:
   - jupyter
   - pip:
     - allennlp
+    - googledrivedownloader
