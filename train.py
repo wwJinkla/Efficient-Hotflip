@@ -46,6 +46,7 @@ class Trainer(TorchModelBase):
                 pred = self.model(sentences)
                 losses = self.loss(pred, labels)
                 losses.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
                 total_losses += losses.item()
                 self.optimizer.step()
                 self.optimizer.zero_grad()
