@@ -10,8 +10,7 @@ from .model_embeddings import ModelEmbeddings
 
 
 class CharCNNLSTM(nn.Module):
-    """Character-level-CNN LSTM sentence classifier
-    """
+    """Character-level-CNN LSTM sentence classifier"""
 
     def __init__(
         self,
@@ -19,6 +18,7 @@ class CharCNNLSTM(nn.Module):
         embed_size,
         hidden_size,
         vocab,
+        num_layers=2,
         dropout_rate=0.2,
         num_classes=4,
     ):
@@ -27,7 +27,9 @@ class CharCNNLSTM(nn.Module):
         self.hidden_size = hidden_size
         self.dropout_rate = dropout_rate
         self.vocab = vocab
-        self.encoder = nn.LSTM(embed_size, hidden_size, bidirectional=True)
+        self.encoder = nn.LSTM(
+            embed_size, hidden_size, num_layers=num_layers, bidirectional=True
+        )
         self.h_projection = nn.Linear(hidden_size * 2, hidden_size, bias=False)
         self.c_projection = nn.Linear(hidden_size * 2, hidden_size, bias=False)
         self.att_projection = nn.Linear(hidden_size * 2, hidden_size, bias=False)
@@ -52,10 +54,10 @@ class CharCNNLSTM(nn.Module):
     def encode(
         self, source_padded: torch.Tensor, source_lengths: List[int]
     ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        """ Apply the encoder to source sentences to obtain encoder hidden states.
+        """Apply the encoder to source sentences to obtain encoder hidden states.
             Additionally, take the final states of the encoder and project them to obtain initial states for decoder.
         @param source_padded (Tensor): Tensor of padded source sentences with shape (src_len, b, max_word_length), where
-                                        b = batch_size, src_len = maximum source sentence length. Note that 
+                                        b = batch_size, src_len = maximum source sentence length. Note that
                                        these have already been sorted in order of longest to shortest sentence.
         @param source_lengths (List[int]): List of actual lengths for each of the source sentences in the batch
         @returns enc_hiddens (Tensor): Tensor of hidden units with shape (b, src_len, h*2), where
