@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torch.nn.utils
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from model.model_embeddings import ModelEmbeddings
+from .model_embeddings import ModelEmbeddings
 
 
 class CharCNNLSTM(nn.Module):

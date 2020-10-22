@@ -9,7 +9,7 @@ from typing import List
 
 import torch
 
-from model.utils import pad_sents, pad_sents_char, read_corpus
+from .utils import pad_sents, pad_sents_char, read_corpus
 
 
 class VocabEntry(object):
