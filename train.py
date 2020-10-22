@@ -86,7 +86,7 @@ if __name__ == "__main__":
         char_embed_size=25,
         embed_size=100,
         hidden_size=100,
-        batch_size=50,
+        batch_size=100,
         eta=0.01,
     )
     trainer.fit(train_contents, train_labels)
