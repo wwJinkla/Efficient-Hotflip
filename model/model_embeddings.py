@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import torch.nn as nn
-from cnn import CNN
-from highway import Highway
+
+from .cnn import CNN
+from .highway import Highway
 
 
 class ModelEmbeddings(nn.Module):

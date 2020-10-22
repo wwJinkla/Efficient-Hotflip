@@ -96,6 +96,15 @@ def read_corpus(file_path):
     return data
 
 
+def read_labels(label_file_path):
+    labels = []
+    for line in open(label_file_path):
+        label = int(line.strip())
+        labels.append(label)
+
+    return labels
+
+
 def batch_iter(data, batch_size, shuffle=False):
     """ Yield batches of source and target sentences reverse sorted by length (largest to smallest).
     @param data (list of (src_sent, tgt_sent)): list of tuples containing source and target sentence
