@@ -30,6 +30,9 @@ class Trainer(TorchModelBase):
         return Dataset(contents, labels)
 
     def fit(self, contents, labels):
+        # TODO: validation set, loss, accuracy
+        # TODO: the model doesn't converge
+        # TODO: checkpoints
 
         self.dataset = self.build_dataset(contents, labels)
         self.model = self.build_graph()
@@ -55,6 +58,7 @@ class Trainer(TorchModelBase):
         return
 
     def predict(self):
+        # TODO: test accuracy and save predicted output
         raise NotImplementedError
 
 
