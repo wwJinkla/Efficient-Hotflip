@@ -131,3 +131,4 @@ data/*.csv.zip
 data/*.csv
 .vscode/settings.json
 .DS_Store
+data/*txt

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import math
+import sys
 from typing import List
 
 import numpy as np
@@ -126,3 +127,14 @@ def batch_iter(data, batch_size, shuffle=False):
         tgt_sents = [e[1] for e in examples]
 
         yield src_sents, tgt_sents
+
+
+def progress_bar(msg, verbose=True):
+    """
+    Simple over-writing progress bar.
+
+    """
+    if verbose:
+        sys.stderr.write("\r")
+        sys.stderr.write(msg)
+        sys.stderr.flush()
