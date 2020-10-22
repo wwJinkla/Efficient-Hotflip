@@ -9,16 +9,21 @@ from efficient.torch_model_base import TorchModelBase
 
 
 class Trainer(TorchModelBase):
-    def __init__(self, vocab, embed_size, hidden_size, **model_kwargs):
+    def __init__(self, vocab, char_embed_size, embed_size, hidden_size, **model_kwargs):
         super().__init__(**model_kwargs)
         self.vocab = vocab
+        self.char_embed_size = char_embed_size
         self.embed_size = embed_size
         self.hidden_size = hidden_size
+
         self.loss = nn.CrossEntropyLoss()
 
     def build_graph(self):
         return CharCNNLSTM(
-            embed_size=self.embed_size, hidden_size=self.hidden_size, vocab=self.vocab
+            embed_size=self.embed_size,
+            char_embed_size=self.char_embed_size,
+            hidden_size=self.hidden_size,
+            vocab=self.vocab,
         )
 
     def build_dataset(self, contents, labels):
@@ -76,5 +81,12 @@ if __name__ == "__main__":
     vocab = Vocab.load("data/vocab.json")
     train_contents = read_corpus("data/train_content.txt")
     train_labels = read_labels("data/train_label.txt")
-    trainer = Trainer(vocab, embed_size=50, hidden_size=100, batch_size=50)
+    trainer = Trainer(
+        vocab,
+        char_embed_size=25,
+        embed_size=100,
+        hidden_size=100,
+        batch_size=50,
+        eta=0.01,
+    )
     trainer.fit(train_contents, train_labels)

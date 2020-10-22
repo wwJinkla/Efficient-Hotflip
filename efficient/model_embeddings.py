@@ -12,7 +12,9 @@ class ModelEmbeddings(nn.Module):
     Class that converts input words to their CNN-based embeddings.
     """
 
-    def __init__(self, embed_size, vocab):
+    def __init__(
+        self, embed_size, char_embed_size, vocab, dropout_rate=0.3, max_word_length=21
+    ):
         """
         Init the Embedding layer for one language
         @param embed_size (int): Embedding size (dimensionality) for the output
@@ -22,10 +24,10 @@ class ModelEmbeddings(nn.Module):
         super(ModelEmbeddings, self).__init__()
 
         self.embed_size = embed_size
-        self.char_embed_size = 50
+        self.char_embed_size = char_embed_size
         # self.vocab           = vocab
-        self.dropout_rate = 0.3
-        self.max_word_length = 21
+        self.dropout_rate = dropout_rate
+        self.max_word_length = max_word_length
 
         # dense character embedding
         pad_token_idx = vocab.char2id["<pad>"]

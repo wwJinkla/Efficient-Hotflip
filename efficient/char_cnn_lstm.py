@@ -13,9 +13,17 @@ class CharCNNLSTM(nn.Module):
     """Character-level-CNN LSTM sentence classifier
     """
 
-    def __init__(self, embed_size, hidden_size, vocab, dropout_rate=0.2, num_classes=4):
+    def __init__(
+        self,
+        char_embed_size,
+        embed_size,
+        hidden_size,
+        vocab,
+        dropout_rate=0.2,
+        num_classes=4,
+    ):
         super(CharCNNLSTM, self).__init__()
-        self.model_embeddings = ModelEmbeddings(embed_size, vocab.src)
+        self.model_embeddings = ModelEmbeddings(embed_size, char_embed_size, vocab.src)
         self.hidden_size = hidden_size
         self.dropout_rate = dropout_rate
         self.vocab = vocab
