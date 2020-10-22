@@ -3,8 +3,8 @@
 
 import torch
 import torch.nn as nn
-import torch.nn.utils
 import torch.nn.functional as F
+import torch.nn.utils
 
 
 class Highway(nn.Module):
