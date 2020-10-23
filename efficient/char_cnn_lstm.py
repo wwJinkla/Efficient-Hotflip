@@ -20,31 +20,62 @@ class CharCNNLSTM(nn.Module):
         vocab,
         num_layers=2,
         dropout_rate=0.2,
+        max_word_length=50,
         num_classes=4,
+        device="cpu",
     ):
         super(CharCNNLSTM, self).__init__()
-        self.model_embeddings = ModelEmbeddings(embed_size, char_embed_size, vocab.src)
         self.hidden_size = hidden_size
         self.dropout_rate = dropout_rate
+        self.max_word_length = max_word_length
         self.vocab = vocab
-        self.encoder = nn.LSTM(
-            embed_size, hidden_size, num_layers=num_layers, bidirectional=True
+        self.embed_size = embed_size
+        self.char_embed_size = char_embed_size
+        self.num_classes = num_classes
+
+        self.model_embeddings = ModelEmbeddings(
+            embed_size=self.embed_size,
+            char_embed_size=self.char_embed_size,
+            vocab=self.vocab.src,
+            dropout_rate=self.dropout_rate,
+            max_word_length=self.max_word_length,
         )
-        self.h_projection = nn.Linear(hidden_size * 2, hidden_size, bias=False)
-        self.c_projection = nn.Linear(hidden_size * 2, hidden_size, bias=False)
-        self.att_projection = nn.Linear(hidden_size * 2, hidden_size, bias=False)
+
+        self.encoder = nn.LSTM(
+            self.embed_size,
+            self.hidden_size,
+            num_layers=num_layers,
+            bidirectional=False,
+        )
+        self.h_projection = nn.Linear(
+            self.hidden_size * 2, self.hidden_size, bias=False
+        )
+        self.c_projection = nn.Linear(
+            self.hidden_size * 2, self.hidden_size, bias=False
+        )
+        self.att_projection = nn.Linear(
+            self.hidden_size * 2, self.hidden_size, bias=False
+        )
         self.combined_output_projection = nn.Linear(
-            hidden_size * 2 + hidden_size, hidden_size, bias=False
+            self.hidden_size * 2 + self.hidden_size, self.hidden_size, bias=False
         )
         self.dropout = nn.Dropout(self.dropout_rate)
+        self.final_layer = nn.Linear(self.hidden_size, self.num_classes, bias=True)
+        self.init_weight()
+        self.device = device
 
-        self.final_layer = nn.Linear(hidden_size, num_classes, bias=False)
-        self.device = "cpu"
+    def init_weight(self):
+        init_range = 0.1
+        self.model_embeddings.CharEmbedding.weight.data.uniform_(
+            -init_range, init_range
+        )
+        self.final_layer.weight.data.uniform_(-init_range, init_range)
+        self.final_layer.bias.data.fill_(0)
 
     def forward(self, source: List[List[str]]) -> torch.Tensor:
         source_lengths = [len(s) for s in source]
         source_padded_chars = self.vocab.src.to_input_tensor_char(
-            source, device=self.device
+            source, max_word_length=self.max_word_length, device=self.device
         )
         enc_hiddens, dec_init_state = self.encode(source_padded_chars, source_lengths)
 
