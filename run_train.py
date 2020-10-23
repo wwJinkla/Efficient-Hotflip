@@ -21,9 +21,10 @@ if __name__ == "__main__":
         embed_size=500,
         hidden_size=500,
         max_word_length=30,
-        batch_size=500,
+        batch_size=100,
         eta=0.001,
         max_grad_norm=1,
         max_iter=1000,
+        val_batch_size=100,
     )
     train(vocab_path, train_contents_path, train_label_path, **model_config)

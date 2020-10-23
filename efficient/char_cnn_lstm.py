@@ -77,6 +77,7 @@ class CharCNNLSTM(nn.Module):
         source_padded_chars = self.vocab.src.to_input_tensor_char(
             source, max_word_length=self.max_word_length, device=self.device
         )
+
         enc_hiddens, dec_init_state = self.encode(source_padded_chars, source_lengths)
 
         logits = self.final_layer(dec_init_state[0])
