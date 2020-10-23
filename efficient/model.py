@@ -9,7 +9,7 @@ from efficient.char_cnn_lstm import CharCNNLSTM
 from efficient.torch_model_base import TorchModelBase
 
 
-class Trainer(TorchModelBase):
+class CharCNNLSTMModel(TorchModelBase):
     def __init__(
         self,
         vocab,
@@ -26,6 +26,7 @@ class Trainer(TorchModelBase):
         self.hidden_size = hidden_size
         self.max_word_length = max_word_length
         self.loss = nn.CrossEntropyLoss()
+        self.model = self.build_graph()
 
     def build_graph(self):
         return CharCNNLSTM(
@@ -51,7 +52,6 @@ class Trainer(TorchModelBase):
         self.train_set = self.build_dataset(train_contents, train_labels)
         self.val_set = self.build_dataset(val_contents, val_labels)
 
-        self.model = self.build_graph()
         self.optimizer = self.build_optimizer()
 
         self.optimizer.zero_grad()
@@ -93,11 +93,9 @@ class Trainer(TorchModelBase):
                 val_accuracy,
             )
             if iter_step % 10 == 0:
-                model_path = f"checkpoints/model_iter_{iter_step}"
-                self.to_pickle(model_path)
+                model_path = f"checkpoints/model_iter_{iter_step}.pkl"
+                torch.save(self.model.state_dict(), model_path)
                 print("Model saved to:", model_path)
-
-        return
 
     def predict(self, contents, labels):
         self.model.eval()
@@ -159,24 +157,3 @@ class Dataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.labels)
-
-
-if __name__ == "__main__":
-    from efficient.utils import read_corpus, read_labels
-    from efficient.vocab import Vocab
-
-    vocab = Vocab.load("data/vocab.json")
-    train_contents = read_corpus("data/train_content.txt")
-    train_labels = read_labels("data/train_label.txt")
-    trainer = Trainer(
-        vocab,
-        char_embed_size=25,
-        embed_size=100,
-        hidden_size=100,
-        max_word_length=20,
-        batch_size=100,
-        eta=0.01,
-        max_grad_norm=1,
-        max_iter=50,
-    )
-    trainer.fit(train_contents, train_labels)
