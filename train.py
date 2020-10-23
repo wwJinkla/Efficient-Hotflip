@@ -29,33 +29,33 @@ class Trainer(TorchModelBase):
     def build_dataset(self, contents, labels):
         return Dataset(contents, labels)
 
-    def fit(self, contents, labels):
-        # TODO: validation set, loss, accuracy
-        # TODO: the model doesn't converge
-        # TODO: checkpoints
+    # def fit(self, contents, labels):
+    #     # TODO: validation set, loss, accuracy
+    #     # TODO: the model doesn't converge
+    #     # TODO: checkpoints
 
-        self.dataset = self.build_dataset(contents, labels)
-        self.model = self.build_graph()
-        self.optimizer = self.build_optimizer()
+    #     self.dataset = self.build_dataset(contents, labels)
+    #     self.model = self.build_graph()
+    #     self.optimizer = self.build_optimizer()
 
-        self.optimizer.zero_grad()
-        self.model.train()
-        for iter_step in range(1, self.max_iter + 1):
-            total_losses = 0.0
+    #     self.optimizer.zero_grad()
+    #     self.model.train()
+    #     for iter_step in range(1, self.max_iter + 1):
+    #         total_losses = 0.0
 
-            for batch_step in range(1, 20):
-                sentences, labels = self.dataset[self.batch_size]
+    #         for batch_step in range(1, 20):
+    #             sentences, labels = self.dataset[self.batch_size]
 
-                pred = self.model(sentences)
-                losses = self.loss(pred, labels)
-                losses.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
-                total_losses += losses.item()
-                self.optimizer.step()
-                self.optimizer.zero_grad()
-            print("iter:", iter_step, "loss:", total_losses)
+    #             pred = self.model(sentences)
+    #             losses = self.loss(pred, labels)
+    #             losses.backward()
+    #             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
+    #             total_losses += losses.item()
+    #             self.optimizer.step()
+    #             self.optimizer.zero_grad()
+    #         print("iter:", iter_step, "loss:", total_losses)
 
-        return
+    #     return
 
     def predict(self):
         # TODO: test accuracy and save predicted output
@@ -93,5 +93,6 @@ if __name__ == "__main__":
         hidden_size=100,
         batch_size=100,
         eta=0.01,
+        max_grad_norm=1,
     )
     trainer.fit(train_contents, train_labels)
