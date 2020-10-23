@@ -1,7 +1,8 @@
 import random
 from collections import Counter
-from typing import List
 from itertools import cycle
+from typing import List
+
 import torch
 from torch import nn
 
@@ -37,7 +38,7 @@ class CharCNNLSTMModel(TorchModelBase):
             hidden_size=self.hidden_size,
             max_word_length=self.max_word_length,
             vocab=self.vocab,
-            device=self.device
+            device=self.device,
         )
 
     def build_dataset(self, contents, labels):
@@ -110,7 +111,7 @@ class CharCNNLSTMModel(TorchModelBase):
                     _, accuracy = self.predict(batch_contents, batch_labels)
                     val_accuracies.append(accuracy)
 
-                total_val_accuracy = sum(val_accuracies)/len(val_accuracies)
+                total_val_accuracy = sum(val_accuracies) / len(val_accuracies)
 
                 if total_val_accuracy > best_accuracy:
                     best_accuracy = total_val_accuracy
