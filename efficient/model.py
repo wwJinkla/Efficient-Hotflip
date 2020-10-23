@@ -1,7 +1,7 @@
 import random
 from collections import Counter
 from typing import List
-
+from itertools import cycle
 import torch
 from torch import nn
 
@@ -17,6 +17,7 @@ class CharCNNLSTMModel(TorchModelBase):
         embed_size,
         hidden_size,
         max_word_length,
+        val_batch_size,
         **model_kwargs,
     ):
         super().__init__(**model_kwargs)
@@ -25,6 +26,7 @@ class CharCNNLSTMModel(TorchModelBase):
         self.embed_size = embed_size
         self.hidden_size = hidden_size
         self.max_word_length = max_word_length
+        self.val_batch_size = val_batch_size
         self.loss = nn.CrossEntropyLoss()
         self.model = self.build_graph()
 
@@ -35,6 +37,7 @@ class CharCNNLSTMModel(TorchModelBase):
             hidden_size=self.hidden_size,
             max_word_length=self.max_word_length,
             vocab=self.vocab,
+            device=self.device
         )
 
     def build_dataset(self, contents, labels):
@@ -55,6 +58,7 @@ class CharCNNLSTMModel(TorchModelBase):
         self.optimizer = self.build_optimizer()
 
         self.optimizer.zero_grad()
+        self.model.to(self.device)
         self.model.train()
 
         best_accuracy = 0
@@ -63,7 +67,7 @@ class CharCNNLSTMModel(TorchModelBase):
 
             for batch_step in range(1, 20):
                 contents, labels = self.train_set[self.batch_size]
-
+                labels = labels.to(self.device)
                 pred = self.model(contents)
                 losses = self.loss(pred, labels)
                 losses.backward()
@@ -79,7 +83,8 @@ class CharCNNLSTMModel(TorchModelBase):
             predicted_labels = torch.argmax(pred, dim=1)
             accuracy = float((predicted_labels == labels).float().mean())
 
-            val_contents, val_labels = self.val_set[len(self.val_set)]
+            val_contents, val_labels = self.val_set[self.val_batch_size]
+            val_labels = val_labels.to(self.device)
             val_losses, val_accuracy = self.predict(val_contents, val_labels)
             print(
                 "Iter:",
@@ -88,9 +93,9 @@ class CharCNNLSTMModel(TorchModelBase):
                 losses.item(),
                 "train acc:",
                 accuracy,
-                "val loss:",
+                "sampled val loss:",
                 val_losses,
-                "val acc:",
+                "sampled val acc:",
                 val_accuracy,
             )
             if iter_step % 10 == 0:
@@ -98,21 +103,33 @@ class CharCNNLSTMModel(TorchModelBase):
                 torch.save(self.model.state_dict(), model_path)
                 print("Model saved to:", model_path)
 
-            if val_accuracy > best_accuracy:
-                best_model_path = f"checkpoints/best_model.pkl"
-                torch.save(self.model.state_dict(), best_model_path)
-                print(
-                    "Best model saved to:",
-                    best_model_path,
-                    "with accuracy:",
-                    best_accuracy,
-                )
+                val_accuracies = []
+                # This will drop few examples
+                for batch_index in range(0, len(self.val_set), self.val_batch_size):
+                    batch_contents, batch_labels = self.val_set[self.val_batch_size]
+                    _, accuracy = self.predict(batch_contents, batch_labels)
+                    val_accuracies.append(accuracy)
+
+                total_val_accuracy = sum(val_accuracies)/len(val_accuracies)
+
+                if total_val_accuracy > best_accuracy:
+                    best_accuracy = total_val_accuracy
+                    best_model_path = f"checkpoints/best_model.pkl"
+                    torch.save(self.model.state_dict(), best_model_path)
+                    print(
+                        "Best model saved to:",
+                        best_model_path,
+                        "with total validation accuracy:",
+                        best_accuracy,
+                    )
 
     def predict(self, contents, labels):
         self.model.eval()
+        self.model.to(self.device)
         with torch.no_grad():
             # TODO: smaller batch if OOM
             pred = self.model(contents)
+            labels = labels.to(self.device)
             losses = self.loss(pred, labels).item()
             predicted_labels = torch.argmax(pred, dim=1)
             accuracy = float((predicted_labels == labels).float().mean())
@@ -156,10 +173,10 @@ class Dataset(torch.utils.data.Dataset):
         self.contents = contents
         self.labels = labels
         assert len(self.contents) == len(self.labels)
-        self.data = list(zip(self.contents, self.labels))
+        self.data_generator = iter(cycle(list(zip(self.contents, self.labels))))
 
-    def __getitem__(self, batchsize=3):
-        batch_data = random.choices(self.data, k=batchsize)
+    def __getitem__(self, batch_size=3):
+        batch_data = [next(self.data_generator) for _ in range(batch_size)]
         batch_contents = [c for c, l in batch_data]
         batch_labels = [l for c, l in batch_data]
         batch_labels = torch.tensor(batch_labels) - 1  # original labels are [1,2,3,4]
