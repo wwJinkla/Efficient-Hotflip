@@ -13,7 +13,7 @@ class ModelEmbeddings(nn.Module):
     """
 
     def __init__(
-        self, embed_size, char_embed_size, vocab, dropout_rate=0.3, max_word_length=21
+        self, embed_size, char_embed_size, vocab, dropout_rate=0.3, max_word_length=50
     ):
         """
         Init the Embedding layer for one language

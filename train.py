@@ -9,13 +9,21 @@ from efficient.torch_model_base import TorchModelBase
 
 
 class Trainer(TorchModelBase):
-    def __init__(self, vocab, char_embed_size, embed_size, hidden_size, **model_kwargs):
+    def __init__(
+        self,
+        vocab,
+        char_embed_size,
+        embed_size,
+        hidden_size,
+        max_word_length,
+        **model_kwargs
+    ):
         super().__init__(**model_kwargs)
         self.vocab = vocab
         self.char_embed_size = char_embed_size
         self.embed_size = embed_size
         self.hidden_size = hidden_size
-
+        self.max_word_length = max_word_length
         self.loss = nn.CrossEntropyLoss()
 
     def build_graph(self):
@@ -23,39 +31,45 @@ class Trainer(TorchModelBase):
             embed_size=self.embed_size,
             char_embed_size=self.char_embed_size,
             hidden_size=self.hidden_size,
+            max_word_length=self.max_word_length,
             vocab=self.vocab,
         )
 
     def build_dataset(self, contents, labels):
         return Dataset(contents, labels)
 
-    # def fit(self, contents, labels):
-    #     # TODO: validation set, loss, accuracy
-    #     # TODO: the model doesn't converge
-    #     # TODO: checkpoints
+    def fit(self, contents, labels):
+        # TODO: validation set, loss, accuracy
+        # TODO: checkpoints
 
-    #     self.dataset = self.build_dataset(contents, labels)
-    #     self.model = self.build_graph()
-    #     self.optimizer = self.build_optimizer()
+        self.dataset = self.build_dataset(contents, labels)
+        self.model = self.build_graph()
+        self.optimizer = self.build_optimizer()
 
-    #     self.optimizer.zero_grad()
-    #     self.model.train()
-    #     for iter_step in range(1, self.max_iter + 1):
-    #         total_losses = 0.0
+        self.optimizer.zero_grad()
+        self.model.train()
 
-    #         for batch_step in range(1, 20):
-    #             sentences, labels = self.dataset[self.batch_size]
+        for iter_step in range(1, self.max_iter + 1):
+            total_losses = 0.0
 
-    #             pred = self.model(sentences)
-    #             losses = self.loss(pred, labels)
-    #             losses.backward()
-    #             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
-    #             total_losses += losses.item()
-    #             self.optimizer.step()
-    #             self.optimizer.zero_grad()
-    #         print("iter:", iter_step, "loss:", total_losses)
+            for batch_step in range(1, 20):
+                sentences, labels = self.dataset[self.batch_size]
 
-    #     return
+                pred = self.model(sentences)
+                losses = self.loss(pred, labels)
+                losses.backward()
+                total_losses += losses.item()
+                if self.max_grad_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), self.max_grad_norm
+                    )
+                self.optimizer.step()
+                self.optimizer.zero_grad()
+
+            accuracy = float((torch.argmax(pred, dim=1) == labels).float().mean())
+            print("iter:", iter_step, "loss:", total_losses, "accuracy", accuracy)
+
+        return
 
     def predict(self):
         # TODO: test accuracy and save predicted output
@@ -67,10 +81,12 @@ class Dataset(torch.utils.data.Dataset):
         self.contents = contents
         self.labels = labels
         assert len(self.contents) == len(self.labels)
+        self.data = list(zip(self.contents, self.labels))
 
     def __getitem__(self, batchsize=3):
-        batch_contents = random.choices(self.contents, k=batchsize)
-        batch_labels = random.choices(self.labels, k=batchsize)
+        batch_data = random.choices(self.data, k=batchsize)
+        batch_contents = [c for c, l in batch_data]
+        batch_labels = [l for c, l in batch_data]
         batch_labels = torch.tensor(batch_labels) - 1  # original labels are [1,2,3,4]
 
         return batch_contents, batch_labels
@@ -91,6 +107,7 @@ if __name__ == "__main__":
         char_embed_size=25,
         embed_size=100,
         hidden_size=100,
+        max_word_length=20,
         batch_size=100,
         eta=0.01,
         max_grad_norm=1,

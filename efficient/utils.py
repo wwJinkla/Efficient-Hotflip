@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def pad_sents_char(sents, char_pad_token):
+def pad_sents_char(sents, char_pad_token, max_word_length=50):
     """ Pad list of sentences according to the longest sentence in the batch and max_word_length.
     @param sents (list[list[list[int]]]): list of sentences, result of `words2charindices()` 
         from `vocab.py`
@@ -22,19 +22,6 @@ def pad_sents_char(sents, char_pad_token):
         number of characters
         Output shape: (batch_size, max_sentence_length, max_word_length)
     """
-    # Words longer than 21 characters should be truncated
-    max_word_length = 21
-
-    ### YOUR CODE HERE for part 1b
-    ### TODO:
-    ###     Perform necessary padding to the sentences in the batch similar to the pad_sents()
-    ###     method below using the padding character from the arguments. You should ensure all
-    ###     sentences have the same number of words and each word has the same number of
-    ###     characters.
-    ###     Set padding words to a `max_word_length` sized vector of padding characters.
-    ###
-    ###     You should NOT use the method `pad_sents()` below because of the way it handles
-    ###     padding and unknown words.
     max_sent_length = max([len(sent) for sent in sents])
     sents_padded = []
     for sent in sents:
@@ -54,7 +41,6 @@ def pad_sents_char(sents, char_pad_token):
             words_padded = words_padded[:max_sent_length]
 
         sents_padded.append(words_padded[:max_sent_length])
-    ### END YOUR CODE
 
     return sents_padded
 
