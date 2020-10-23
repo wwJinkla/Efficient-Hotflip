@@ -57,6 +57,7 @@ class CharCNNLSTMModel(TorchModelBase):
         self.optimizer.zero_grad()
         self.model.train()
 
+        best_accuracy = 0
         for iter_step in range(1, self.max_iter + 1):
             total_losses = 0.0
 
@@ -78,7 +79,7 @@ class CharCNNLSTMModel(TorchModelBase):
             predicted_labels = torch.argmax(pred, dim=1)
             accuracy = float((predicted_labels == labels).float().mean())
 
-            val_contents, val_labels = self.val_set[self.batch_size]
+            val_contents, val_labels = self.val_set[len(self.val_set)]
             val_losses, val_accuracy = self.predict(val_contents, val_labels)
             print(
                 "Iter:",
@@ -96,6 +97,16 @@ class CharCNNLSTMModel(TorchModelBase):
                 model_path = f"checkpoints/model_iter_{iter_step}.pkl"
                 torch.save(self.model.state_dict(), model_path)
                 print("Model saved to:", model_path)
+
+            if val_accuracy > best_accuracy:
+                best_model_path = f"checkpoints/best_model.pkl"
+                torch.save(self.model.state_dict(), best_model_path)
+                print(
+                    "Best model saved to:",
+                    best_model_path,
+                    "with accuracy:",
+                    best_accuracy,
+                )
 
     def predict(self, contents, labels):
         self.model.eval()
