@@ -42,7 +42,7 @@ class CharCNNLSTMModel(TorchModelBase):
         )
 
     def build_dataset(self, contents, labels):
-        return Dataset(contents, labels)
+        return Dataset(contents, labels, self.vocab, self.max_word_length, self.device)
 
     def fit(self, contents, labels):
         # TODO: validation set, loss, accuracy
@@ -67,9 +67,9 @@ class CharCNNLSTMModel(TorchModelBase):
             total_losses = 0.0
 
             for batch_step in range(1, 20):
-                contents, labels = self.train_set[self.batch_size]
+                contents, labels, content_lengths = self.train_set[self.batch_size]
                 labels = labels.to(self.device)
-                pred = self.model(contents)
+                pred = self.model(contents, content_lengths)
                 losses = self.loss(pred, labels)
                 losses.backward()
                 total_losses += losses.item()
@@ -84,9 +84,13 @@ class CharCNNLSTMModel(TorchModelBase):
             predicted_labels = torch.argmax(pred, dim=1)
             accuracy = float((predicted_labels == labels).float().mean())
 
-            val_contents, val_labels = self.val_set[self.val_batch_size]
+            val_contents, val_labels, val_content_lengths = self.val_set[
+                self.val_batch_size
+            ]
             val_labels = val_labels.to(self.device)
-            val_losses, val_accuracy = self.predict(val_contents, val_labels)
+            val_losses, val_accuracy = self.predict(
+                val_contents, val_labels, val_content_lengths
+            )
             print(
                 "Iter:",
                 iter_step,
@@ -107,8 +111,12 @@ class CharCNNLSTMModel(TorchModelBase):
                 val_accuracies = []
                 # This will drop few examples
                 for batch_index in range(0, len(self.val_set), self.val_batch_size):
-                    batch_contents, batch_labels = self.val_set[self.val_batch_size]
-                    _, accuracy = self.predict(batch_contents, batch_labels)
+                    batch_contents, batch_labels, batch_content_lengths = self.val_set[
+                        self.val_batch_size
+                    ]
+                    _, accuracy = self.predict(
+                        batch_contents, batch_labels, batch_content_lengths
+                    )
                     val_accuracies.append(accuracy)
 
                 total_val_accuracy = sum(val_accuracies) / len(val_accuracies)
@@ -124,13 +132,14 @@ class CharCNNLSTMModel(TorchModelBase):
                         best_accuracy,
                     )
 
-    def predict(self, contents, labels):
+    def predict(self, contents, labels, content_lengths):
         self.model.eval()
         self.model.to(self.device)
         with torch.no_grad():
-            # TODO: smaller batch if OOM
-            pred = self.model(contents)
+            contents = contents.to(self.device)
             labels = labels.to(self.device)
+
+            pred = self.model(contents, content_lengths)
             losses = self.loss(pred, labels).item()
             predicted_labels = torch.argmax(pred, dim=1)
             accuracy = float((predicted_labels == labels).float().mean())
@@ -170,19 +179,29 @@ class CharCNNLSTMModel(TorchModelBase):
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, contents: List[str], labels: List[int]):
+    def __init__(
+        self, contents: List[str], labels: List[int], vocab, max_word_length, device
+    ):
         self.contents = contents
         self.labels = labels
         assert len(self.contents) == len(self.labels)
         self.data_generator = iter(cycle(list(zip(self.contents, self.labels))))
+        self.vocab = vocab
+        self.max_word_length = max_word_length
+        self.device = device
 
     def __getitem__(self, batch_size=3):
         batch_data = [next(self.data_generator) for _ in range(batch_size)]
         batch_contents = [c for c, l in batch_data]
         batch_labels = [l for c, l in batch_data]
-        batch_labels = torch.tensor(batch_labels) - 1  # original labels are [1,2,3,4]
 
-        return batch_contents, batch_labels
+        batch_labels = torch.tensor(batch_labels) - 1  # original labels are [1,2,3,4]
+        batch_contents_lengths = [len(s) for s in batch_contents]
+        batch_contents = self.vocab.src.to_input_tensor_char(
+            batch_contents, max_word_length=self.max_word_length, device=self.device
+        )
+
+        return batch_contents, batch_labels, batch_contents_lengths
 
     def __len__(self):
         return len(self.labels)
