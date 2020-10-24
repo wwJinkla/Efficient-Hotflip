@@ -11,7 +11,10 @@ def infer(model_path, vocab_path, test_contents_path, test_label_path, **model_c
     test_labels = read_labels(test_label_path)
     test_dataset = Dataset(test_contents, test_labels)
     predictor = CharCNNLSTMModel(vocab, **model_config)
-    predictor.model.load_state_dict(torch.load(model_path))
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    predictor.model.load_state_dict(
+        torch.load(model_path, map_location=torch.device(device))
+    )
 
     batch_size = 20
     accuracies = []
@@ -21,14 +24,14 @@ def infer(model_path, vocab_path, test_contents_path, test_label_path, **model_c
         _, accuracy = predictor.predict(batch_contents, batch_labels)
         accuracies.append(accuracy)
 
-    print("test accuracy:", sum(accuracies)/len(accuracies))
+    print("test accuracy:", sum(accuracies) / len(accuracies))
 
 
 if __name__ == "__main__":
     vocab_path = "data/vocab.json"
     test_contents_path = "data/test_content.txt"
     test_label_path = "data/test_label.txt"
-    model_path = "checkpoints/best_model.pkl"
+    model_path = "checkpoints/long/best_model.pkl"
 
     model_config = dict(
         char_embed_size=25,
@@ -39,6 +42,6 @@ if __name__ == "__main__":
         eta=0.001,
         max_grad_norm=1,
         max_iter=500,
-        val_batch_size=500
+        val_batch_size=500,
     )
     infer(model_path, vocab_path, test_contents_path, test_label_path, **model_config)
