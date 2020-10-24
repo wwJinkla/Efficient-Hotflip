@@ -24,7 +24,7 @@ if __name__ == "__main__":
         batch_size=100,
         eta=0.001,
         max_grad_norm=1,
-        max_iter=1000,
+        max_iter=2000,
         val_batch_size=100,
     )
     train(vocab_path, train_contents_path, train_label_path, **model_config)

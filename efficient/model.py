@@ -111,8 +111,12 @@ class CharCNNLSTMModel(TorchModelBase):
                 val_accuracies = []
                 # This will drop few examples
                 for batch_index in range(0, len(self.val_set), self.val_batch_size):
-                    batch_contents, batch_labels = self.val_set[self.val_batch_size]
-                    _, accuracy = self.predict(batch_contents, batch_labels)
+                    batch_contents, batch_labels, batch_content_lengths = self.val_set[
+                        self.val_batch_size
+                    ]
+                    _, accuracy = self.predict(
+                        batch_contents, batch_labels, batch_content_lengths
+                    )
                     val_accuracies.append(accuracy)
 
                 total_val_accuracy = sum(val_accuracies) / len(val_accuracies)
@@ -132,9 +136,10 @@ class CharCNNLSTMModel(TorchModelBase):
         self.model.eval()
         self.model.to(self.device)
         with torch.no_grad():
-            # TODO: smaller batch if OOM
-            pred = self.model(contents, content_lengths)
+            contents = contents.to(self.device)
             labels = labels.to(self.device)
+
+            pred = self.model(contents, content_lengths)
             losses = self.loss(pred, labels).item()
             predicted_labels = torch.argmax(pred, dim=1)
             accuracy = float((predicted_labels == labels).float().mean())
