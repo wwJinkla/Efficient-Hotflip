@@ -72,14 +72,13 @@ class CharCNNLSTM(nn.Module):
         self.final_layer.weight.data.uniform_(-init_range, init_range)
         self.final_layer.bias.data.fill_(0)
 
-    def forward(self, source: List[List[str]]) -> torch.Tensor:
-        source_lengths = [len(s) for s in source]
-        source_padded_chars = self.vocab.src.to_input_tensor_char(
-            source, max_word_length=self.max_word_length, device=self.device
+    def forward(
+        self, batch_contents: torch.Tensor, batch_contents_lengths: List[int]
+    ) -> torch.Tensor:
+
+        enc_hiddens, dec_init_state = self.encode(
+            batch_contents, batch_contents_lengths
         )
-
-        enc_hiddens, dec_init_state = self.encode(source_padded_chars, source_lengths)
-
         logits = self.final_layer(dec_init_state[0])
         return logits
 

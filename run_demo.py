@@ -35,10 +35,15 @@ def demo(
     demo_contents = [c for c, l, r in demo_data]
     demo_labels = [l for c, l, r in demo_data]
     demo_raw_contents = [r for c, l, r in demo_data]
-    demo_labels = torch.tensor(demo_labels) - 1
+
+    demo_dataset = Dataset(
+        demo_contents, demo_labels, vocab, model_config.get("max_word_length"), "cpu"
+    )
+
+    demo_contents, demo_labels, demo_contents_lengths = demo_dataset[len(demo_dataset)]
 
     with torch.no_grad():
-        pred = predictor.model(demo_contents)
+        pred = predictor.model(demo_contents, demo_contents_lengths)
         predicted_labels = torch.argmax(pred, dim=1)
 
     for content, gt, pr in zip(demo_raw_contents, demo_labels, predicted_labels):

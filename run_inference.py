@@ -9,7 +9,9 @@ def infer(model_path, vocab_path, test_contents_path, test_label_path, **model_c
     vocab = Vocab.load(vocab_path)
     test_contents = read_corpus(test_contents_path)
     test_labels = read_labels(test_label_path)
-    test_dataset = Dataset(test_contents, test_labels)
+    test_dataset = Dataset(
+        test_contents, test_labels, vocab, model_config.get("max_word_length"), "cpu"
+    )
     predictor = CharCNNLSTMModel(vocab, **model_config)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     predictor.model.load_state_dict(
@@ -20,8 +22,10 @@ def infer(model_path, vocab_path, test_contents_path, test_label_path, **model_c
     accuracies = []
     # This will drop the last few examples (<= 19)
     for batch_index in range(0, len(test_labels), batch_size):
-        batch_contents, batch_labels = test_dataset[batch_size]
-        _, accuracy = predictor.predict(batch_contents, batch_labels)
+        batch_contents, batch_labels, batch_content_lengths = test_dataset[batch_size]
+        _, accuracy = predictor.predict(
+            batch_contents, batch_labels, batch_content_lengths
+        )
         accuracies.append(accuracy)
 
     print("test accuracy:", sum(accuracies) / len(accuracies))
