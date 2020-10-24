@@ -68,7 +68,7 @@ def pad_sents(sents, pad_token):
     return sents_padded
 
 
-def read_corpus(file_path, lower=True):
+def read_corpus(file_path, lower=False):
     """ Read file, where each sentence is dilineated by a `\n`.
     @param file_path (str): path to file containing corpus
     @param source (str): "tgt" or "src" indicating whether text
