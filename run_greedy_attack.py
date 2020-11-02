@@ -57,11 +57,13 @@ def get_data(test_contents, test_labels, idx, vocab, model):
     )
     candidates = list(zip(*[(i).tolist() for i in candidates]))
     # Remove <s> and <\s>
-    candidates = [
-        cand
-        for cand in candidates
-        if cand[0] != 0 and cand[0] != batch_contents_lengths[0] - 1
-    ]
+    candidates = set(
+        [
+            cand
+            for cand in candidates
+            if cand[0] != 0 and cand[0] != batch_contents_lengths[0] - 1
+        ]
+    )
     return batch_contents, batch_labels, batch_contents_lengths, candidates
 
 
@@ -109,36 +111,54 @@ def index_to_sentence(batch_contents, vocab):
     return sentence
 
 
-def flip(
+def best_flip(
     batch_contents,
     batch_labels,
     model_embedding,
     model,
     batch_contents_lengths,
     predictor,
-    position,
+    candidates,
 ):
-    i, j, k = position
-    x_emb = model_embedding.CharEmbedding(batch_contents)
-    one_char = x_emb[i, j, k].clone()
-    x_emb[i, j, k] = one_char
-    one_char.retain_grad()
+    """find best position to flip according to the first order approximation of loss increases
+    """
 
-    # Computation graph except CharEmbedding
+    x_emb = model_embedding.CharEmbedding(batch_contents)
+    x_emb.retain_grad()
+
     logits = forward(x_emb, model_embedding, model, batch_contents_lengths)
     predicted_labels = torch.argmax(logits, dim=1)
     losses = predictor.loss(logits, batch_labels)
     losses.backward()
-    gradients = one_char.grad
+    gradients = x_emb.grad
 
     with torch.no_grad():
-        char_embedding = model_embedding.CharEmbedding.weight.data
-        # First order approximation
-        L = torch.matmul((char_embedding - one_char), gradients)
-        adv_i = torch.argmax(L)
-        batch_contents[i, j, k] = adv_i
+        x_emb.unsqueeze_(3)  # [sent_len, 1, word_len, 1, char_emb_size]
+        gradients.unsqueeze_(3)  # [sent_len, 1, word_len, 1, char_emb_size]
 
-    return batch_contents
+        char_embedding_ = char_embedding.clone()
+        char_embedding_.unsqueeze_(0)
+        char_embedding_.unsqueeze_(0)
+        char_embedding_.unsqueeze_(0)  # [1, 1, 1, vocab_size, char_emb_size]
+
+        difference = (
+            x_emb - char_embedding_
+        )  # [sent_len, 1, word_len, vocab_size, char_emb_size]
+        L = (difference * gradients).sum(dim=-1)  # [sent_len, 1, word_len, vocab_size]
+        values, indexes = torch.max(L, dim=-1)  # [sent_len, 1, word_len]
+
+        loss, adv_index, position = max(
+            [
+                (float(values[i, j, k]), int(indexes[i, j, k]), (i, j, k))
+                for i, j, k in candidates
+            ],
+            key=lambda x: x[0],
+        )
+        i, j, k = position
+        batch_contents[i, j, k] = adv_index
+        candidates.remove(position)  # prevent same position being flip again
+
+    return batch_contents, candidates
 
 
 def insert(
@@ -185,7 +205,7 @@ def delete(batch_contents, position, vocab):
     return batch_contents
 
 
-def random_flip(
+def greedy_flip(
     contents_path,
     label_path,
     model_path,
@@ -212,17 +232,16 @@ def random_flip(
             test_contents, test_labels, idx, vocab, model
         )
 
-        for position in random.choices(
-            candidates, k=batch_contents_lengths[0] // budget
-        ):
-            batch_contents = flip(
+        for _ in range(batch_contents_lengths[0] // budget):
+
+            batch_contents, candidates = best_flip(
                 batch_contents,
                 batch_labels,
                 model_embedding,
                 model,
                 batch_contents_lengths,
                 predictor,
-                position,
+                candidates,
             )
 
         sentence = index_to_sentence(batch_contents, vocab)

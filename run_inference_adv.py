@@ -28,12 +28,11 @@ def infer(model_path, vocab_path, test_contents_path, test_label_path, **model_c
         )
         accuracies.append(accuracy)
 
-    print("test accuracy:", sum(accuracies) / len(accuracies))
+    return sum(accuracies) / len(accuracies)
 
 
 if __name__ == "__main__":
     vocab_path = "data/vocab.json"
-    model_path = "checkpoints/case_aware/best_model.pkl"
 
     model_config = dict(
         char_embed_size=25,
@@ -46,11 +45,33 @@ if __name__ == "__main__":
         max_iter=500,
         val_batch_size=500,
     )
-    for attack in ["random_flip", "random_insert"]:
-        print(attack)
-        test_contents_path = f"data/adversary/{attack}_test_content.txt"
-        test_label_path = f"data/adversary/{attack}_test_label.txt"
+    models = [
+        "case_aware",
+        "random_flip",
+        "random_insert",
+        "random_delete",
+        "random_mix",
+    ]
+    for model in models:
+        model_path = f"checkpoints/{model}/best_model.pkl"
 
-        infer(
+        test_contents_path = f"data/test_content.txt"
+        test_label_path = f"data/test_label.txt"
+
+        acc = infer(
             model_path, vocab_path, test_contents_path, test_label_path, **model_config
         )
+        print("model:", model, "attack:", "case_aware", "acc:", acc)
+
+        for attack in ["random_flip", "random_insert", "random_delete", "random_mix"]:
+            test_contents_path = f"data/adversary/{attack}_test_content.txt"
+            test_label_path = f"data/adversary/{attack}_test_label.txt"
+
+            acc = infer(
+                model_path,
+                vocab_path,
+                test_contents_path,
+                test_label_path,
+                **model_config,
+            )
+            print("model:", model, "attack:", attack, "acc:", acc)
