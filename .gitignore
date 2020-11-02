@@ -134,3 +134,5 @@ data/*.csv
 data/*txt
 checkpoints/model*
 notebooks/*ipynb
+
+data/adversary/*txt
