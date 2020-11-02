@@ -1,3 +1,4 @@
+import os
 import random
 from collections import Counter
 from itertools import cycle
@@ -44,9 +45,10 @@ class CharCNNLSTMModel(TorchModelBase):
     def build_dataset(self, contents, labels):
         return Dataset(contents, labels, self.vocab, self.max_word_length, self.device)
 
-    def fit(self, contents, labels):
-        # TODO: validation set, loss, accuracy
-        # TODO: checkpoints
+    def fit(self, contents, labels, checkpoint_path="checkpoints"):
+
+        os.makedirs(checkpoint_path, exist_ok=True)
+
         (
             train_contents,
             train_labels,
@@ -104,7 +106,7 @@ class CharCNNLSTMModel(TorchModelBase):
                 val_accuracy,
             )
             if iter_step % 10 == 0:
-                model_path = f"checkpoints/model_iter_{iter_step}.pkl"
+                model_path = f"{checkpoint_path}/model_iter_{iter_step}.pkl"
                 torch.save(self.model.state_dict(), model_path)
                 print("Model saved to:", model_path)
 
@@ -123,7 +125,7 @@ class CharCNNLSTMModel(TorchModelBase):
 
                 if total_val_accuracy > best_accuracy:
                     best_accuracy = total_val_accuracy
-                    best_model_path = f"checkpoints/best_model.pkl"
+                    best_model_path = f"{checkpoint_path}/best_model.pkl"
                     torch.save(self.model.state_dict(), best_model_path)
                     print(
                         "Best model saved to:",
