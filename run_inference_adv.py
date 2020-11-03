@@ -47,10 +47,11 @@ if __name__ == "__main__":
     )
     models = [
         "case_aware",
-        "random_flip",
-        "random_insert",
-        "random_delete",
-        "random_mix",
+        # "random_flip",
+        # "random_insert",
+        # "random_delete",
+        # "random_mix",
+        "greedy_flip",
     ]
     for model in models:
         model_path = f"checkpoints/{model}/best_model.pkl"
@@ -63,7 +64,14 @@ if __name__ == "__main__":
         )
         print("model:", model, "attack:", "case_aware", "acc:", acc)
 
-        for attack in ["random_flip", "random_insert", "random_delete", "random_mix"]:
+        for attack in [
+            "greedy_flip",
+            "random_flip",
+            "random_insert",
+            "random_delete",
+            "random_mix",
+        ]:
+
             test_contents_path = f"data/adversary/{attack}_test_content.txt"
             test_label_path = f"data/adversary/{attack}_test_label.txt"
 
