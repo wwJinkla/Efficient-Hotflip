@@ -35,7 +35,9 @@ if __name__ == "__main__":
     vocab_path = "data/vocab.json"
     test_contents_path = "data/test_content.txt"
     test_label_path = "data/test_label.txt"
-    model_path = "checkpoints/best_model.pkl"
+    # test_contents_path = "data/adversary/greedy_flip_test_content.txt"
+    # test_label_path = "data/adversary/greedy_flip_test_label.txt"
+    model_path = "checkpoints/case_aware/best_model.pkl"
 
     model_config = dict(
         char_embed_size=25,

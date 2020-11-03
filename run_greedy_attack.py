@@ -8,6 +8,8 @@ from efficient.model import CharCNNLSTMModel, Dataset
 from efficient.utils import read_corpus, read_labels
 from efficient.vocab import Vocab
 
+torch.cuda.set_device(0)
+
 
 def setup(vocab_path, model_path, contents_path, label_path, model_config):
     vocab = Vocab.load(vocab_path)
@@ -18,7 +20,6 @@ def setup(vocab_path, model_path, contents_path, label_path, model_config):
     )
     model = predictor.model
     model.to(device)
-    model.eval()
     model_embedding = model.model_embeddings
     test_contents = read_corpus(contents_path)
     test_labels = read_labels(label_path)
@@ -124,6 +125,7 @@ def best_flip(
     """
 
     x_emb = model_embedding.CharEmbedding(batch_contents)
+    char_embedding = model_embedding.CharEmbedding.weight.data
     x_emb.retain_grad()
 
     logits = forward(x_emb, model_embedding, model, batch_contents_lengths)
@@ -161,7 +163,7 @@ def best_flip(
     return batch_contents, candidates
 
 
-def insert(
+def best_insert(
     batch_contents,
     batch_labels,
     model_embedding,
@@ -169,31 +171,65 @@ def insert(
     batch_contents_lengths,
     vocab,
     predictor,
-    position,
+    candidates,
 ):
-    char_embedding = model_embedding.CharEmbedding.weight.data
-    a_emb = char_embedding[vocab.src.char2id["a"]]
+    cand_inserted_contents = []
+    for i, j, k in candidates:
+        inserted_contents = batch_contents.clone()
+        inserted_contents[i, j, k + 1 :] = batch_contents[i, j, k:-1].clone()
+        inserted_contents[i, j, k] = vocab.src.char2id["a"]
+        cand_inserted_contents.append(inserted_contents.squeeze(1))
 
-    i, j, k = position
-    x_emb = model_embedding.CharEmbedding(batch_contents)
-    # move all characters after k-th one-slot to one position righter
-    x_emb[i, j, k + 1 :] = x_emb[i, j, k:-1].clone()
+    cand_inserted_contents = torch.stack(cand_inserted_contents, dim=1)
 
-    insertion_emb = a_emb.clone().requires_grad_(True)
-    x_emb[i, j, k] = insertion_emb
-    insertion_emb.retain_grad()
+    if cand_inserted_contents.shape[1] > 400:
+        assert False
 
-    logits = forward(x_emb, model_embedding, model, batch_contents_lengths)
-    predicted_labels = torch.argmax(logits, dim=1)
-    losses = predictor.loss(logits, batch_labels)
+    x_emb = model_embedding.CharEmbedding(cand_inserted_contents)
+    x_emb.retain_grad()
+    logits = forward(
+        x_emb, model_embedding, model, batch_contents_lengths * x_emb.shape[1]
+    )
+
+    cand_inserted_labels = torch.Tensor.repeat(batch_labels, x_emb.shape[1]).clone()
+
+    # TODO: serialize cand_inserted_contents and think through loss function
+    losses = predictor.loss(logits, cand_inserted_labels)
     losses.backward()
-    gradients = insertion_emb.grad
+    gradients = x_emb.grad
 
     with torch.no_grad():
-        L = torch.matmul((char_embedding - insertion_emb), gradients)
-        adv_i = torch.argmax(L, dim=0)
-        batch_contents[i, j, k + 1 :] = batch_contents[i, j, k:-1].clone()
-        batch_contents[i, j, k] = adv_i
+        cands = []
+        grads = []
+        # only get the embedding and gradients that are candidates
+        for cand, grad, c in zip(
+            x_emb.transpose(0, 1), gradients.transpose(0, 1), candidates
+        ):
+            cands.append(cand[c[0], c[2]])
+            grads.append(grad[c[0], c[2]])
+
+        x_emb_cands = torch.stack(cands)
+        grad_cands = torch.stack(grads)
+
+        x_emb_cands.unsqueeze_(1)
+        grad_cands.unsqueeze_(1)
+
+        char_embedding = model_embedding.CharEmbedding.weight.data.clone()
+        char_embedding.unsqueeze_(0)
+
+        difference = x_emb_cands - char_embedding
+
+        L = (difference * grad_cands).sum(dim=-1)
+
+        values, indexes = torch.max(L, dim=-1)
+        best_insert_idx = torch.argmax(values)
+
+        position = candidates[best_insert_idx]
+        index = indexes[best_insert_idx]
+        batch_contents = (
+            cand_inserted_contents[:, best_insert_idx, :].unsqueeze(1).clone()
+        )
+        batch_contents[position] = index
 
     return batch_contents
 
@@ -253,7 +289,7 @@ def greedy_flip(
             f.write(str(int(batch_labels) + 1) + "\n")  # one-indexing
 
 
-def random_insert(
+def greedy_insert(
     contents_path,
     label_path,
     model_path,
@@ -280,10 +316,11 @@ def random_insert(
         batch_contents, batch_labels, batch_contents_lengths, candidates = get_data(
             test_contents, test_labels, idx, vocab, model
         )
-        for position in random.choices(
-            candidates, k=batch_contents_lengths[0] // budget
-        ):
-            batch_contents = insert(
+        candidates = sorted(list(candidates))
+
+        for _ in range(batch_contents_lengths[0] // budget):
+            # omit updating candidates
+            batch_contents = best_insert(
                 batch_contents,
                 batch_labels,
                 model_embedding,
@@ -291,8 +328,9 @@ def random_insert(
                 batch_contents_lengths,
                 vocab,
                 predictor,
-                position,
+                candidates,
             )
+
         sentence = index_to_sentence(batch_contents, vocab)
 
         with open(content_output_path, "a") as f:
@@ -420,20 +458,20 @@ if __name__ == "__main__":
     vocab_path = "data/vocab.json"
     budget = 5
     operation2func = {
-        "flip": random_flip,
-        "insert": random_insert,
+        "flip": greedy_flip,
+        "insert": greedy_insert,
         "delete": random_delete,
         "mix": random_mix,
     }
-    for operation in ["flip", "insert", "delete", "mix"]:
-        for dataset in ["test", "train"]:
+    for operation in ["flip"]:
+        for dataset in ["train"]:
             print(operation, dataset)
             contents_path = f"data/{dataset}_content.txt"
             label_path = f"data/{dataset}_label.txt"
             content_output_path = (
-                f"data/adversary/random_{operation}_{dataset}_content.txt"
+                f"data/adversary/greedy_{operation}_{dataset}_content.txt"
             )
-            label_output_path = f"data/adversary/random_{operation}_{dataset}_label.txt"
+            label_output_path = f"data/adversary/greedy_{operation}_{dataset}_label.txt"
 
             operation2func[operation](
                 contents_path,
