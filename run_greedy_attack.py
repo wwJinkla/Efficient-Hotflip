@@ -8,8 +8,6 @@ from efficient.model import CharCNNLSTMModel, Dataset
 from efficient.utils import read_corpus, read_labels
 from efficient.vocab import Vocab
 
-torch.cuda.set_device(0)
-
 
 def setup(vocab_path, model_path, contents_path, label_path, model_config):
     vocab = Vocab.load(vocab_path)
