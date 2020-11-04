@@ -230,8 +230,10 @@ def best_insert(
         0, len(vocab.src) - 1
     )  # pick a random character to insert
 
-    x_emb = model_embedding.CharEmbedding(batch_contents)
-    x_emb = torch.Tensor.repeat_interleave(x_emb, len(candidates), dim=1)
+    x_emb = model_embedding.CharEmbedding(batch_contents)  # [sent_len, 1, word_len, 25]
+    x_emb = torch.Tensor.repeat_interleave(
+        x_emb, len(candidates), dim=1
+    )  # [sent_len, len(candidates), word_len, 25]
 
     char_embedding = model_embedding.CharEmbedding.weight.data.clone()
     a_emb = char_embedding[insert_idx]
@@ -332,10 +334,6 @@ def best_delete(
     predictor,
     candidates,
 ):
-    insert_idx = random.randint(
-        0, len(vocab.src) - 1
-    )  # pick a random character to insert
-
     x_emb = model_embedding.CharEmbedding(batch_contents)
     x_emb = torch.Tensor.repeat_interleave(x_emb, len(candidates), dim=1)
     char_embedding = model_embedding.CharEmbedding.weight.data.clone()
@@ -346,7 +344,6 @@ def best_delete(
 
     # Brute-force search over all positions
     with torch.no_grad():
-
         logits = forward(
             x_emb, model_embedding, model, batch_contents_lengths * len(candidates)
         )
@@ -531,24 +528,31 @@ if __name__ == "__main__":
         "delete": greedy_delete,
         "mix": greedy_mix,
     }
-    for operation in ["delete"]:
-        for dataset in ["test"]:
-            print(operation, dataset)
-            contents_path = f"data/{dataset}_content.txt"
-            label_path = f"data/{dataset}_label.txt"
-            content_output_path = (
-                f"data/adversary/greedy_{operation}_{dataset}_content.txt"
-            )
-            label_output_path = f"data/adversary/greedy_{operation}_{dataset}_label.txt"
+    # for operation in ["insert"]:
+    #     for dataset in ["test"]:
 
-            operation2func[operation](
-                contents_path,
-                label_path,
-                model_path,
-                model_config,
-                vocab_path,
-                budget,
-                content_output_path,
-                label_output_path,
-                dataset,
-            )
+    for operation, dataset in [
+        ("mix", "test"),
+        ("insert", "test"),
+        ("delete", "train"),
+        ("mix", "train"),
+        ("insert", "train"),
+    ]:
+
+        print(operation, dataset)
+        contents_path = f"data/{dataset}_content.txt"
+        label_path = f"data/{dataset}_label.txt"
+        content_output_path = f"data/adversary/greedy_{operation}_{dataset}_content.txt"
+        label_output_path = f"data/adversary/greedy_{operation}_{dataset}_label.txt"
+
+        operation2func[operation](
+            contents_path,
+            label_path,
+            model_path,
+            model_config,
+            vocab_path,
+            budget,
+            content_output_path,
+            label_output_path,
+            dataset,
+        )

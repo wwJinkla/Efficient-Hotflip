@@ -48,8 +48,16 @@ if __name__ == "__main__":
     )
     model_path = "checkpoints/case_aware/best_model.pkl"
 
-    # for attack in ["random_flip", "random_insert", "random_delete", "random_mix"]:
-    for attack in ["greedy_flip"]:
+    for attack in [
+        "random_flip",
+        "random_insert",
+        "random_delete",
+        "random_mix",
+        "greedy_flip",
+        "greedy_insert",
+        "greedy_delete",
+        "greedy_mix",
+    ]:
 
         print(attack)
         adv_train_contents_path = f"data/adversary/{attack}_train_content.txt"
