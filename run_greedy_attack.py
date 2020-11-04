@@ -18,7 +18,6 @@ def setup(vocab_path, model_path, contents_path, label_path, model_config):
     )
     model = predictor.model
     model.to(device)
-    model.eval()
     model_embedding = model.model_embeddings
     test_contents = read_corpus(contents_path)
     test_labels = read_labels(label_path)
@@ -113,7 +112,7 @@ def index_to_sentence(batch_contents, vocab):
 
 def best_flip(
     batch_contents,
-    batch_labels,
+    adv_label,
     model_embedding,
     model,
     batch_contents_lengths,
@@ -124,11 +123,12 @@ def best_flip(
     """
 
     x_emb = model_embedding.CharEmbedding(batch_contents)
+    char_embedding = model_embedding.CharEmbedding.weight.data
     x_emb.retain_grad()
 
     logits = forward(x_emb, model_embedding, model, batch_contents_lengths)
     predicted_labels = torch.argmax(logits, dim=1)
-    losses = predictor.loss(logits, batch_labels)
+    losses = predictor.loss(logits, adv_label)
     losses.backward()
     gradients = x_emb.grad
 
@@ -142,12 +142,12 @@ def best_flip(
         char_embedding_.unsqueeze_(0)  # [1, 1, 1, vocab_size, char_emb_size]
 
         difference = (
-            x_emb - char_embedding_
+            char_embedding_ - x_emb
         )  # [sent_len, 1, word_len, vocab_size, char_emb_size]
         L = (difference * gradients).sum(dim=-1)  # [sent_len, 1, word_len, vocab_size]
-        values, indexes = torch.max(L, dim=-1)  # [sent_len, 1, word_len]
+        values, indexes = torch.min(L, dim=-1)  # [sent_len, 1, word_len]
 
-        loss, adv_index, position = max(
+        loss, adv_index, position = min(
             [
                 (float(values[i, j, k]), int(indexes[i, j, k]), (i, j, k))
                 for i, j, k in candidates
@@ -159,50 +159,6 @@ def best_flip(
         candidates.remove(position)  # prevent same position being flip again
 
     return batch_contents, candidates
-
-
-def insert(
-    batch_contents,
-    batch_labels,
-    model_embedding,
-    model,
-    batch_contents_lengths,
-    vocab,
-    predictor,
-    position,
-):
-    char_embedding = model_embedding.CharEmbedding.weight.data
-    a_emb = char_embedding[vocab.src.char2id["a"]]
-
-    i, j, k = position
-    x_emb = model_embedding.CharEmbedding(batch_contents)
-    # move all characters after k-th one-slot to one position righter
-    x_emb[i, j, k + 1 :] = x_emb[i, j, k:-1].clone()
-
-    insertion_emb = a_emb.clone().requires_grad_(True)
-    x_emb[i, j, k] = insertion_emb
-    insertion_emb.retain_grad()
-
-    logits = forward(x_emb, model_embedding, model, batch_contents_lengths)
-    predicted_labels = torch.argmax(logits, dim=1)
-    losses = predictor.loss(logits, batch_labels)
-    losses.backward()
-    gradients = insertion_emb.grad
-
-    with torch.no_grad():
-        L = torch.matmul((char_embedding - insertion_emb), gradients)
-        adv_i = torch.argmax(L, dim=0)
-        batch_contents[i, j, k + 1 :] = batch_contents[i, j, k:-1].clone()
-        batch_contents[i, j, k] = adv_i
-
-    return batch_contents
-
-
-def delete(batch_contents, position, vocab):
-    i, j, k = position
-    batch_contents[i, j, k:-1] = batch_contents[i, j, k + 1 :].clone()
-    batch_contents[i, j, -1] = vocab.src.char2id["<pad>"]
-    return batch_contents
 
 
 def greedy_flip(
@@ -231,12 +187,17 @@ def greedy_flip(
         batch_contents, batch_labels, batch_contents_lengths, candidates = get_data(
             test_contents, test_labels, idx, vocab, model
         )
+        labels = [0, 1, 2, 3]
+        labels.remove(int(batch_labels))
+        adv_label = torch.tensor(
+            [random.choice(labels)], device=device
+        )  # minimize loss w.r.t to this label
 
         for _ in range(batch_contents_lengths[0] // budget):
 
             batch_contents, candidates = best_flip(
                 batch_contents,
-                batch_labels,
+                adv_label,
                 model_embedding,
                 model,
                 batch_contents_lengths,
@@ -253,7 +214,51 @@ def greedy_flip(
             f.write(str(int(batch_labels) + 1) + "\n")  # one-indexing
 
 
-def random_insert(
+def best_insert(
+    batch_contents,
+    adv_label,
+    model_embedding,
+    model,
+    batch_contents_lengths,
+    vocab,
+    predictor,
+    candidates,
+):
+    insert_idx = random.randint(
+        0, len(vocab.src) - 1
+    )  # pick a random character to insert
+
+    x_emb = model_embedding.CharEmbedding(batch_contents)  # [sent_len, 1, word_len, 25]
+    x_emb = torch.Tensor.repeat_interleave(
+        x_emb, len(candidates), dim=1
+    )  # [sent_len, len(candidates), word_len, 25]
+
+    char_embedding = model_embedding.CharEmbedding.weight.data.clone()
+    a_emb = char_embedding[insert_idx]
+
+    for row, position in enumerate(candidates):
+        i, j, k = position
+        x_emb[i, row, k + 1 :] = x_emb[i, row, k:-1].clone()
+        x_emb[i, row, k] = a_emb.clone()
+
+    # Brute-force search over all positions
+    with torch.no_grad():
+
+        logits = forward(
+            x_emb, model_embedding, model, batch_contents_lengths * len(candidates)
+        )
+        best_cand = torch.argmax(logits[:, adv_label])
+        i, j, k = candidates[best_cand]
+
+        batch_contents[i, j, k + 1 :] = batch_contents[i, j, k:-1].clone()
+        batch_contents[i, j, k] = insert_idx
+
+    del candidates[best_cand]
+
+    return batch_contents, candidates
+
+
+def greedy_insert(
     contents_path,
     label_path,
     model_path,
@@ -280,19 +285,34 @@ def random_insert(
         batch_contents, batch_labels, batch_contents_lengths, candidates = get_data(
             test_contents, test_labels, idx, vocab, model
         )
-        for position in random.choices(
-            candidates, k=batch_contents_lengths[0] // budget
-        ):
-            batch_contents = insert(
+        candidates = random.choices(
+            list(candidates), k=150
+        )  # limit search space to prevent OOM
+        candidates = sorted(list(candidates))
+        labels = [0, 1, 2, 3]
+        labels.remove(int(batch_labels))
+
+        # Find the adversary label that has largest logits if the original prediction is correct
+        x_emb = model_embedding.CharEmbedding(batch_contents)
+        logits = forward(x_emb, model_embedding, model, batch_contents_lengths)
+        if torch.argsort(logits)[:, -1] == batch_labels:
+            adv_label = torch.argsort(logits)[:, -2].to(device=device)
+        else:
+            adv_label = torch.tensor([random.choice(labels)]).to(device=device)
+
+        for _ in range(batch_contents_lengths[0] // budget):
+
+            batch_contents, candidates = best_insert(
                 batch_contents,
-                batch_labels,
+                adv_label,
                 model_embedding,
                 model,
                 batch_contents_lengths,
                 vocab,
                 predictor,
-                position,
+                candidates,
             )
+
         sentence = index_to_sentence(batch_contents, vocab)
 
         with open(content_output_path, "a") as f:
@@ -302,45 +322,39 @@ def random_insert(
             f.write(str(int(batch_labels) + 1) + "\n")  # one-indexing
 
 
-def random_delete(
-    contents_path,
-    label_path,
-    model_path,
-    model_config,
-    vocab_path,
-    budget,
-    content_output_path,
-    label_output_path,
-    dataset,
+def best_delete(
+    batch_contents,
+    adv_label,
+    model_embedding,
+    model,
+    batch_contents_lengths,
+    vocab,
+    predictor,
+    candidates,
 ):
-    (
-        vocab,
-        predictor,
-        device,
-        model,
-        model_embedding,
-        test_contents,
-        test_labels,
-        sampled_idx,
-    ) = setup(vocab_path, model_path, contents_path, label_path, model_config)
+    x_emb = model_embedding.CharEmbedding(batch_contents)
+    x_emb = torch.Tensor.repeat_interleave(x_emb, len(candidates), dim=1)
+    char_embedding = model_embedding.CharEmbedding.weight.data.clone()
 
-    for idx in tqdm(sampled_idx):
-        batch_contents, batch_labels, batch_contents_lengths, candidates = get_data(
-            test_contents, test_labels, idx, vocab, model
+    for row, position in enumerate(candidates):
+        i, j, k = position
+        x_emb[i, row, k - 1 : -1] = x_emb[i, row, k:].clone()
+
+    # Brute-force search over all positions
+    with torch.no_grad():
+        logits = forward(
+            x_emb, model_embedding, model, batch_contents_lengths * len(candidates)
         )
-        for position in random.choices(
-            candidates, k=batch_contents_lengths[0] // budget
-        ):
-            batch_contents = delete(batch_contents, position, vocab)
-        sentence = index_to_sentence(batch_contents, vocab)
-        with open(content_output_path, "a") as f:
-            f.write(sentence + "\n")
+        best_cand = torch.argmax(logits[:, adv_label])
+        i, j, k = candidates[best_cand]
+        batch_contents[i, j, k - 1 : -1] = batch_contents[i, j, k:].clone()
 
-        with open(label_output_path, "a") as f:
-            f.write(str(int(batch_labels) + 1) + "\n")  # one-indexing
+    del candidates[best_cand]
+
+    return batch_contents, candidates
 
 
-def random_mix(
+def greedy_delete(
     contents_path,
     label_path,
     model_path,
@@ -367,36 +381,123 @@ def random_mix(
         batch_contents, batch_labels, batch_contents_lengths, candidates = get_data(
             test_contents, test_labels, idx, vocab, model
         )
+        candidates = random.choices(
+            list(candidates), k=150
+        )  # limit search space to prevent OOM
+        candidates = sorted(list(candidates))
+        labels = [0, 1, 2, 3]
+        labels.remove(int(batch_labels))
 
-        for position in random.choices(
-            candidates, k=batch_contents_lengths[0] // budget
-        ):
+        # Find the adversary label that has largest logits if the original prediction is correct
+        x_emb = model_embedding.CharEmbedding(batch_contents)
+        logits = forward(x_emb, model_embedding, model, batch_contents_lengths)
+        if torch.argsort(logits)[:, -1] == batch_labels:
+            adv_label = torch.argsort(logits)[:, -2].to(device=device)
+        else:
+            adv_label = torch.tensor([random.choice(labels)]).to(device=device)
+
+        for _ in range(batch_contents_lengths[0] // budget):
+
+            batch_contents, candidates = best_delete(
+                batch_contents,
+                adv_label,
+                model_embedding,
+                model,
+                batch_contents_lengths,
+                vocab,
+                predictor,
+                candidates,
+            )
+
+        sentence = index_to_sentence(batch_contents, vocab)
+
+        with open(content_output_path, "a") as f:
+            f.write(sentence + "\n")
+
+        with open(label_output_path, "a") as f:
+            f.write(str(int(batch_labels) + 1) + "\n")  # one-indexing
+
+
+def greedy_mix(
+    contents_path,
+    label_path,
+    model_path,
+    model_config,
+    vocab_path,
+    budget,
+    content_output_path,
+    label_output_path,
+    dataset,
+):
+    (
+        vocab,
+        predictor,
+        device,
+        model,
+        model_embedding,
+        test_contents,
+        test_labels,
+        sampled_idx,
+    ) = setup(vocab_path, model_path, contents_path, label_path, model_config)
+
+    for idx in tqdm(sampled_idx):
+
+        batch_contents, batch_labels, batch_contents_lengths, candidates = get_data(
+            test_contents, test_labels, idx, vocab, model
+        )
+        candidates = random.choices(
+            list(candidates), k=150
+        )  # limit search space to prevent OOM
+        candidates = sorted(list(candidates))
+        labels = [0, 1, 2, 3]
+        labels.remove(int(batch_labels))
+
+        # Find the adversary label that has largest logits if the original prediction is correct
+        x_emb = model_embedding.CharEmbedding(batch_contents)
+        logits = forward(x_emb, model_embedding, model, batch_contents_lengths)
+        if torch.argsort(logits)[:, -1] == batch_labels:
+            adv_label = torch.argsort(logits)[:, -2].to(device=device)
+        else:
+            adv_label = torch.tensor([random.choice(labels)]).to(device=device)
+
+        for _ in range(batch_contents_lengths[0] // budget):
             operation = random.choice(["flip", "insert", "delete"])
             if operation == "flip":
-                batch_contents = flip(
+                batch_contents, candidates = best_flip(
                     batch_contents,
-                    batch_labels,
+                    adv_label,
                     model_embedding,
                     model,
                     batch_contents_lengths,
                     predictor,
-                    position,
+                    candidates,
                 )
             elif operation == "insert":
-                batch_contents = insert(
+                batch_contents, candidates = best_insert(
                     batch_contents,
-                    batch_labels,
+                    adv_label,
                     model_embedding,
                     model,
                     batch_contents_lengths,
                     vocab,
                     predictor,
-                    position,
+                    candidates,
                 )
+
             else:
-                batch_contents = delete(batch_contents, position, vocab)
+                batch_contents, candidates = best_delete(
+                    batch_contents,
+                    adv_label,
+                    model_embedding,
+                    model,
+                    batch_contents_lengths,
+                    vocab,
+                    predictor,
+                    candidates,
+                )
 
         sentence = index_to_sentence(batch_contents, vocab)
+
         with open(content_output_path, "a") as f:
             f.write(sentence + "\n")
 
@@ -420,29 +521,36 @@ if __name__ == "__main__":
     vocab_path = "data/vocab.json"
     budget = 5
     operation2func = {
-        "flip": random_flip,
-        "insert": random_insert,
-        "delete": random_delete,
-        "mix": random_mix,
+        "flip": greedy_flip,
+        "insert": greedy_insert,
+        "delete": greedy_delete,
+        "mix": greedy_mix,
     }
-    for operation in ["flip", "insert", "delete", "mix"]:
-        for dataset in ["test", "train"]:
-            print(operation, dataset)
-            contents_path = f"data/{dataset}_content.txt"
-            label_path = f"data/{dataset}_label.txt"
-            content_output_path = (
-                f"data/adversary/random_{operation}_{dataset}_content.txt"
-            )
-            label_output_path = f"data/adversary/random_{operation}_{dataset}_label.txt"
+    # for operation in ["insert"]:
+    #     for dataset in ["test"]:
 
-            operation2func[operation](
-                contents_path,
-                label_path,
-                model_path,
-                model_config,
-                vocab_path,
-                budget,
-                content_output_path,
-                label_output_path,
-                dataset,
-            )
+    for operation, dataset in [
+        ("mix", "test"),
+        ("insert", "test"),
+        ("delete", "train"),
+        ("mix", "train"),
+        ("insert", "train"),
+    ]:
+
+        print(operation, dataset)
+        contents_path = f"data/{dataset}_content.txt"
+        label_path = f"data/{dataset}_label.txt"
+        content_output_path = f"data/adversary/greedy_{operation}_{dataset}_content.txt"
+        label_output_path = f"data/adversary/greedy_{operation}_{dataset}_label.txt"
+
+        operation2func[operation](
+            contents_path,
+            label_path,
+            model_path,
+            model_config,
+            vocab_path,
+            budget,
+            content_output_path,
+            label_output_path,
+            dataset,
+        )
